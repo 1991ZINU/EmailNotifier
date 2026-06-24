@@ -1,0 +1,113 @@
+name: Release - Build & Publish
+
+# v1.2.3 형태의 태그를 push하면 자동으로 빌드 후 GitHub Release 생성
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # Release 생성 및 asset 업로드 권한
+
+jobs:
+  build-and-release:
+    name: Build Installer & Create Release
+    runs-on: windows-latest
+
+    steps:
+      # ── 1. 소스 체크아웃 ─────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Python 환경 설정 ──────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # ── 3. 의존성 설치 ───────────────────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # ── 4. PyInstaller로 EXE 빌드 ───────────────────────
+      - name: Build EXE with PyInstaller
+        run: |
+          pyinstaller --clean --onefile --windowed `
+            --name=EmailNotifier `
+            --paths src `
+            --hidden-import notifier `
+            --hidden-import win32crypt `
+            --hidden-import win32cryptcon `
+            --hidden-import winotify `
+            --hidden-import winotify.audio `
+            src/main.py
+
+      - name: Verify EXE exists
+        run: |
+          if (Test-Path "dist/EmailNotifier.exe") {
+            $size = (Get-Item "dist/EmailNotifier.exe").Length / 1MB
+            Write-Host "EmailNotifier.exe built successfully ($([math]::Round($size,1)) MB)"
+          } else {
+            Write-Error "dist/EmailNotifier.exe not found!"
+            exit 1
+          }
+
+      # ── 5. Inno Setup 설치 ──────────────────────────────
+      - name: Install Inno Setup 6
+        run: choco install innosetup --yes --no-progress
+
+      # ── 6. 태그에서 버전 추출 (v1.2.3 → 1.2.3) ─────────
+      - name: Extract version from tag
+        id: version
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Building version: $version"
+
+      # ── 7. Inno Setup으로 인스톨러 빌드 ─────────────────
+      - name: Build installer with Inno Setup
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          $version = "${{ steps.version.outputs.VERSION }}"
+          & $iscc /DAppVersion=$version installer\email_notifier_installer.iss
+
+      - name: Verify installer exists
+        run: |
+          if (Test-Path "installer/Output/EmailNotifier_Installer.exe") {
+            $size = (Get-Item "installer/Output/EmailNotifier_Installer.exe").Length / 1MB
+            Write-Host "Installer built successfully ($([math]::Round($size,1)) MB)"
+          } else {
+            Write-Error "Installer not found!"
+            exit 1
+          }
+
+      # ── 8. GitHub Release 생성 및 인스톨러 업로드 ────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.TAG }}
+          name: "${{ steps.version.outputs.TAG }} - EmailNotifier"
+          body: |
+            ## 📧 EmailNotifier ${{ steps.version.outputs.TAG }}
+
+            ### 📦 설치 방법
+            1. 아래 **Assets**에서 `EmailNotifier_Installer.exe`를 다운로드합니다.
+            2. 설치 프로그램을 실행합니다 (관리자 권한 필요).
+            3. 최초 실행 시 IMAP 서버 정보를 입력하면 바로 사용 가능합니다.
+
+            ### ⚙️ 시스템 요구사항
+            - Windows 10 / 11 (x64)
+            - 별도의 Python 설치 불필요
+
+            ### 🔗 링크
+            - [소스 코드](https://github.com/1991ZINU/EmailNotifier)
+            - [문제 신고](https://github.com/1991ZINU/EmailNotifier/issues)
+          files: installer/Output/EmailNotifier_Installer.exe
+          draft: false
+          prerelease: false
