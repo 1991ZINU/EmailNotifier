@@ -1,4 +1,8 @@
-imapclient
-beautifulsoup4
-win10toast
-pyyaml
+imapclient>=3.1.0
+beautifulsoup4>=4.15.0
+pyyaml>=6.0.3
+pystray>=0.19.5
+pillow>=12.1.0
+pywin32>=312
+winotify>=1.1.0
+win10toast>=0.9
