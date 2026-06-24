@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.dist-info/
+.Python
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Logs
+*.log
+logs/
+
+# Environment / secrets
+.env
+config.yaml
+seen_ids.json
+*.lock
+
+# Build artifacts (PyInstaller)
+build/
+dist/
+*.spec
+
+# Installer build output
+installer/build/
+installer/dist/
+installer/Output/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Temp
+*.tmp
+*.bak
+Thumbs.db
