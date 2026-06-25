@@ -2,7 +2,8 @@
 # Email Notifier 응용 프로그램입니다.
 # 설정 화면에서 IMAP 서버 정보를 입력하고, 트레이 아이콘을 통해 설정을 수정할 수 있습니다.
 # 최초 실행 시 환영 알림을 표시하고, 중복 실행 방지를 구현합니다.
-import pathlib, sys, getpass, subprocess, yaml, logging, threading, tkinter as tk, os, tempfile, atexit
+# import pathlib, sys, getpass, subprocess, yaml, logging, threading, tkinter as tk, os, tempfile, atexit
+import pathlib, sys, getpass, subprocess, yaml, logging, threading, tkinter as tk, os, tempfile, atexit, time
 from datetime import datetime
 from tkinter import messagebox
 from imapclient import IMAPClient
@@ -324,10 +325,14 @@ def _run_notifier(cfg_path: pathlib.Path) -> tuple[EmailNotifier, threading.Thre
     thread.start()
     return notifier, thread
 
-def _create_image():
-    """Create a simple square icon for the tray."""
+# def _create_image():
+#     """Create a simple square icon for the tray."""
+def _create_image(bg_color=(30, 144, 255)):    
+    """Create a simple square icon for the tray.
+    bg_color: 정상 시 DodgerBlue(파란색), 연결 끊김 시 빨간색 등으로 전달."""
     size = (64, 64)
-    image = Image.new('RGB', size, (30, 144, 255))  # DodgerBlue
+    # image = Image.new('RGB', size, (30, 144, 255))  # DodgerBlue
+    image = Image.new('RGB', size, bg_color)
     draw = ImageDraw.Draw(image)
     draw.rectangle([16, 20, 48, 44], outline="white", width=2)
     draw.line([16, 20, 32, 34], fill="white", width=2)
@@ -372,17 +377,47 @@ def _open_webmail():
     else:
         messagebox.showinfo("알림", "Settings 메뉴에서 '웹메일 주소 (URL)'를 먼저 입력해주세요.")
 
-def _run_tray(notifier: EmailNotifier):
+# def _run_tray(notifier: EmailNotifier):
+def _run_tray(notifier: EmailNotifier, notifier_thread: threading.Thread):
     """Run system tray icon with Settings and Exit menu items."""
+
+    def _on_exit(icon):
+         icon.stop()
+         notifier.stop()
+         # 진행 중인 IMAP 작업이 안전하게 마무리되도록 최대 10초간 대기 (graceful shutdown)
+         notifier_thread.join(timeout=10)
+         if notifier_thread.is_alive():
+            logger.warning("Notifier thread가 10초 내에 종료되지 않았습니다. 강제 종료합니다.")
+
     menu = pystray.Menu(
         Item('Settings', lambda _: _open_settings(notifier)),
         Item('View Logs', lambda _: _view_logs()),
         Item('웹메일 열기 (Open Webmail)', lambda _: _open_webmail()),
-        Item('Exit', lambda icon: (icon.stop(), notifier.stop()))
+        # Item('Exit', lambda icon: (icon.stop(), notifier.stop()))
+        Item('Exit', lambda icon: _on_exit(icon))
     )
     icon = pystray.Icon('EmailNotifier', _create_image(), 'Email Notifier', menu)
     notifier.tray_icon = icon
-    icon.run()
+
+    def _watch_connection_health():
+        """연결 상태(notifier.is_connection_healthy)를 주기적으로 확인하여
+        끊김 시 빨간색, 정상 시 파란색으로 트레이 아이콘을 갱신."""
+        last_state = True
+        while notifier_thread.is_alive():
+            try:
+                current_state = notifier.is_connection_healthy
+                if current_state != last_state:
+                    icon.icon = _create_image((220, 53, 69) if not current_state else (30, 144, 255))
+                    last_state = current_state
+            except Exception:
+                pass
+            time.sleep(5)
+ 
+    health_watch_thread = threading.Thread(target=_watch_connection_health, daemon=True)
+    health_watch_thread.start()
+
+    # icon.run()
+    icon.run()  # (3번에서 이 줄 앞에 watch thread 추가됨, 아래 참고)
 
 
 
@@ -405,8 +440,10 @@ def main() -> None:
             sys.exit(0)
             
         # Run notifier with the (new or existing) config
-        notifier, _ = _run_notifier(cfg_path)
-        _run_tray(notifier)
+        # notifier, _ = _run_notifier(cfg_path)
+        # _run_tray(notifier)
+        notifier, notifier_thread = _run_notifier(cfg_path)
+        _run_tray(notifier, notifier_thread)
     except Exception as e:
         logger.error("Fatal error in main: %s", e, exc_info=True)
         print(f"[Error] {e}")

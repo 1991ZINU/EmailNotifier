@@ -4,6 +4,7 @@ import time
 import logging
 import os
 import tempfile
+import threading
 from pathlib import Path
 import pathlib
 import sys
@@ -221,12 +222,22 @@ class EmailNotifier:
         from datetime import datetime
         self._install_date_dt = datetime.fromisoformat(self.config['install_date'])
         # control flag for graceful shutdown
-        self._running = True
+        # self._running = True
+        # threading.Event를 사용하여 sleep(poll) 대기 중에도 즉시 종료 신호를 받을 수 있도록 함
+        self._stop_event = threading.Event()
+        # IMAP 연결 실패 시 backoff(점증 대기)를 위한 연속 실패 횟수 추적
+        self._consecutive_failures = 0
+        self._max_backoff_seconds = 300  # 최대 대기 시간 5분으로 제한
+        self._connection_failure_threshold = 3  # 이 횟수 이상 연속 실패하면 "연결 끊김" 상태로 간주
+        # 트레이 아이콘 등 외부에서 참조할 수 있는 연결 상태 플래그 (True=정상, False=끊김)
+        self.is_connection_healthy = True
+
         
     def stop(self) -> None:
         """Signal the notifier loop to stop gracefully."""
         self.logger.info("Stopping EmailNotifier loop")
-        self._running = False
+        # self._running = False
+        self._stop_event.set()
 
     def _save_config_excluding_password(self, config_path: Path) -> None:
         """self.config를 파일에 저장하되, 평문 'password' 키는 절대 기록하지 않는다.
@@ -419,7 +430,8 @@ class EmailNotifier:
             self.logger.error("Toast notification failed: %s", e)
 
     def run(self):
-        while self._running:
+        # while self._running:
+        while not self._stop_event.is_set():
             # 매 루프마다 최신 설정값을 다시 읽어옴
             poll = self.config.get("poll_interval_seconds", 10)
             remind = self.config.get("remind_interval_seconds", 30)
@@ -515,13 +527,41 @@ class EmailNotifier:
                     t_logout_start = time.time()
                     client.logout()
                     self.logger.debug("[DIAG] client.logout() took %.2f sec", time.time() - t_logout_start)
+                # 정상적으로 한 바퀴를 완료했으므로 연속 실패 횟수 초기화
+                self._consecutive_failures = 0
+                wait_seconds = poll
+                if not self.is_connection_healthy:
+                    # 끊김 상태에서 복구된 시점: 상태 전환 + 복구 알림
+                    self.is_connection_healthy = True
+                    self.logger.info("IMAP 연결이 복구되었습니다.")
+                    show_simple_toast("연결 복구", "메일 서버 연결이 복구되었습니다.", logger=self.logger)
+
             except Exception as e:
                 self.logger.error("Run loop error: %s", e, exc_info=True)
                 print(f"[Error] {e}")
+                # 연속 실패 시 대기 시간을 점증시켜(exponential backoff) 서버/네트워크 부담을 줄임
+                self._consecutive_failures += 1
+                wait_seconds = min(poll * (2 ** self._consecutive_failures), self._max_backoff_seconds)
+                self.logger.warning(
+                    "연속 실패 %d회 발생. %s초 대기 후 재시도합니다 (최대 %s초).",
+                    self._consecutive_failures, wait_seconds, self._max_backoff_seconds
+                )
+                if self.is_connection_healthy and self._consecutive_failures >= self._connection_failure_threshold:
+                    # 정상 상태에서 임계치를 넘는 연속 실패가 발생한 시점: 상태 전환 + 끊김 알림
+                    self.is_connection_healthy = False
+                    self.logger.warning("IMAP 연결 끊김으로 판단됩니다 (연속 실패 %d회).", self._consecutive_failures)
+                    show_simple_toast("연결 끊김", "메일 서버 연결에 문제가 있습니다. 자동으로 재시도합니다.", logger=self.logger)
 
             t_total = time.time() - t_loop_start
-            self.logger.debug("[DIAG] Total loop processing took %.2f sec, now sleeping %s sec", t_total, poll)
-            time.sleep(poll)
+            # self.logger.debug("[DIAG] Total loop processing took %.2f sec, now sleeping %s sec", t_total, poll)
+            # time.sleep(poll)
+            # self.logger.debug("[DIAG] Total loop processing took %.2f sec, now sleeping %s sec", t_total, poll)
+            # time.sleep 대신 Event.wait를 사용하여, 대기 중에도 stop() 호출 시 즉시 깨어나 루프를 종료할 수 있도록 함
+            # self._stop_event.wait(timeout=poll)
+            self.logger.debug("[DIAG] Total loop processing took %.2f sec, now sleeping %s sec", t_total, wait_seconds)
+            self._stop_event.wait(timeout=wait_seconds)
+
+        self.logger.info("EmailNotifier run loop exited gracefully")
 
 if __name__ == "__main__":
     # 개발 중 테스트용 진입점 (실제 서비스는 src/main.py 에서 호출)
