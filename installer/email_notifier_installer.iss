@@ -1,8 +1,3 @@
-; ============================================================
-; Email Notifier - Inno Setup Script
-; 버전은 빌드 시 외부에서 주입: ISCC.exe /DAppVersion=1.2.3 ...
-; 로컬 빌드 시 기본값 1.0.0 사용
-; ============================================================
 #ifndef AppVersion
   #define AppVersion "1.0.0"
 #endif
@@ -23,7 +18,6 @@ ArchitecturesAllowed=x64
 PrivilegesRequired=admin
 
 [Files]
-; 경로는 이 ISS 파일 위치(installer/)를 기준으로 한 상대 경로
 Source: "..\dist\EmailNotifier.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
@@ -44,7 +38,6 @@ function InitializeUninstall(): Boolean;
 var
   ErrorCode: Integer;
 begin
-  // 삭제 진행 전 실행 중인 EmailNotifier.exe 강제 종료
   ShellExec('open', 'taskkill.exe', '/f /im EmailNotifier.exe', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
   Result := True;
 end;
