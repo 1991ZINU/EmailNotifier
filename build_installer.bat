@@ -15,6 +15,10 @@ pyinstaller --clean --onefile --windowed ^
     --hidden-import win32cryptcon ^
     --hidden-import winotify ^
     --hidden-import winotify.audio ^
+    --add-data "C:\Python314\tcl\tcl8.6;tcl8.6" ^
+    --add-data "C:\Python314\tcl\tk8.6;tk8.6" ^
+    --add-binary "C:\Python314\DLLs\tcl86t.dll;." ^
+    --add-binary "C:\Python314\DLLs\tk86t.dll;." ^
     src\main.py
 
 if %ERRORLEVEL% neq 0 (

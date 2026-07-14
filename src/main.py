@@ -2,6 +2,13 @@
 # Email Notifier 응용 프로그램입니다.
 # 설정 화면에서 IMAP 서버 정보를 입력하고, 트레이 아이콘을 통해 설정을 수정할 수 있습니다.
 # 최초 실행 시 환영 알림을 표시하고, 중복 실행 방지를 구현합니다.
+import os, sys
+if getattr(sys, 'frozen', False):
+    # PyInstaller --onefile 환경에서 Tcl/Tk 경로를 _MEIPASS 기준으로 고정
+    # 임시 폴더가 정리되어도 경로를 잃지 않도록 환경변수로 명시 지정
+    os.environ['TCL_LIBRARY'] = os.path.join(sys._MEIPASS, 'tcl8.6')
+    os.environ['TK_LIBRARY'] = os.path.join(sys._MEIPASS, 'tk8.6')
+
 # import pathlib, sys, getpass, subprocess, yaml, logging, threading, tkinter as tk, os, tempfile, atexit
 import pathlib, sys, getpass, subprocess, yaml, logging, threading, tkinter as tk, os, tempfile, atexit, time
 from datetime import datetime
