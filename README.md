@@ -111,6 +111,9 @@ build_installer.bat
 
 ## 📝 릴리스 노트 (Changelog)
 
+### v1.1.2
+- **버그 픽스**: PyInstaller 단일 파일(`--onefile`) 실행 시 백그라운드 스레드에서 발생하는 Tcl/Tk 초기화 경로(TclError) 문제 해결
+
 ### v1.1.1
 - **빌드 시스템 개선**: `build_installer.bat` 스크립트에서 불필요한 로그 출력을 간소화하고 Inno Setup(ISCC) 경로 탐색 로직 최적화
 - **설치 프로그램 설정 최적화**: `email_notifier_installer.iss` 내 불필요한 주석 제거 및 언인스톨 로직 간소화
